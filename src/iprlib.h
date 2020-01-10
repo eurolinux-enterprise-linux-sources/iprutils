@@ -203,6 +203,7 @@ typedef uint64_t u64;
 #define IPR_XLATE_DEV_FMT_RC(rc)	((((rc) & 127) == 51) ? -EIO : 0)
 #define IPR_TYPE_AF_DISK                     0xC
 #define IPR_TYPE_ADAPTER                     0x1f
+#define IPR_TYPE_ARRAY				   0x1f
 #define IPR_TYPE_EMPTY_SLOT                  0xff
 
 #define IPR_ACTIVE_OPTIMIZED                 0x0
@@ -295,9 +296,11 @@ extern char *tool_name;
 extern struct sysfs_dev *head_zdev;
 extern struct sysfs_dev *tail_zdev;
 extern enum system_p_mode power_cur_mode;
+extern int tool_init_retry;
 
 struct sysfs_dev {
 	u64 device_id;
+	char ioa_pci_addr[16];
 	struct sysfs_dev *next, *prev;
 };
 
@@ -2955,6 +2958,11 @@ void ipr_count_devices_in_vset(struct ipr_dev *, int *num_devs, int *ssd_num_dev
 int ipr_known_zeroed_is_saved(struct ipr_dev *);
 int get_sg_name(struct scsi_dev_data *);
 int ipr_sg_inquiry(struct scsi_dev_data *, u8, void *, u8);
+int get_scsi_dev_data(struct scsi_dev_data **scsi_dev_ref);
+
+int ipr_device_lock(struct ipr_dev *dev);
+void ipr_device_unlock(struct ipr_dev *dev);
+int check_sg_module();
 
 static inline u32 ipr_get_dev_res_handle(struct ipr_ioa *ioa, struct ipr_dev_record *dev_rcd)
 {
@@ -2994,6 +3002,15 @@ static inline int ipr_is_array_record(int record_id)
 {
 	if ((record_id == IPR_RECORD_ID_ARRAY_RECORD) ||
 	    (record_id == IPR_RECORD_ID_ARRAY_RECORD_3))
+		return 1;
+	else
+		return 0;
+}
+
+static inline int ipr_is_ioa(struct ipr_dev *device)
+{
+	if (device->ioa && device->ioa->ioa.scsi_dev_data &&
+	    device->scsi_dev_data == device->ioa->ioa.scsi_dev_data)
 		return 1;
 	else
 		return 0;

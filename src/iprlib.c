@@ -35,6 +35,7 @@ int ipr_fast = 0;
 int format_done = 0;
 static int ipr_mode5_write_buffer = 0;
 static int first_time_check_zeroed_dev = 0;
+int tool_init_retry = 1;
 
 struct sysfs_dev *head_zdev = NULL;
 struct sysfs_dev *tail_zdev = NULL;
@@ -569,8 +570,11 @@ struct sysfs_dev * ipr_find_sysfs_dev(struct ipr_dev *dev, struct sysfs_dev *hea
 		return NULL;
 
 	for (sdev = head; sdev; sdev = sdev->next) {
-		if (sdev->device_id == dev->scsi_dev_data->device_id)
+		if (sdev->device_id != dev->scsi_dev_data->device_id)
+			continue;
+		if (!memcmp(sdev->ioa_pci_addr, dev->ioa->pci_address, sizeof(sdev->ioa_pci_addr)))
 			break;
+
 	}
 
 	return sdev;
@@ -589,6 +593,9 @@ struct ipr_dev *ipr_sysfs_dev_to_dev(struct sysfs_dev *sdev)
 	struct ipr_ioa *ioa;
 
 	for_each_ioa(ioa) {
+		if (memcmp(sdev->ioa_pci_addr, ioa->pci_address, sizeof(sdev->ioa_pci_addr)))
+			continue;
+
 		for_each_dev(ioa, dev) {
 			if (!dev->scsi_dev_data)
 				continue;
@@ -646,6 +653,7 @@ void ipr_add_sysfs_dev(struct ipr_dev *dev, struct sysfs_dev **head,
 	if (!sdev) {
 		sdev = calloc(1, sizeof(struct sysfs_dev));
 		sdev->device_id = dev->scsi_dev_data->device_id;
+		memcpy(sdev->ioa_pci_addr, dev->ioa->pci_address, sizeof(sdev->ioa_pci_addr));
 
 		if (!(*head)) {
 			*tail = *head = sdev;
@@ -2213,7 +2221,7 @@ int tool_init(int save_state)
 
 	for (i = 0; i < 4 && rc_err == -EAGAIN; i++) {
 		rc_err = __tool_init(save_state);
-		if (rc_err == -EAGAIN)
+		if (rc_err == -EAGAIN && tool_init_retry)
 			sleep(2);
 	}
 	if (rc_err) {
@@ -6181,13 +6189,14 @@ static void get_ioa_cap(struct ipr_ioa *ioa)
 						     + mode_pages.hdr.block_desc_len +
 						     sizeof(mode_pages.hdr));
 		ioa->rebuild_rate = page24->rebuild_rate;
-		if (ioa_cap.dual_ioa_raid || ioa_cap.dual_ioa_asymmetric_access) {
-			if (ioa_cap.disable_array_rebuild_verify) {
-				ioa->configure_rebuild_verify = 1;
-				ioa->disable_rebuild_verify =
-					page24->rebuild_without_verify;
-			}
 
+		if (ioa_cap.disable_array_rebuild_verify) {
+			ioa->configure_rebuild_verify = 1;
+			ioa->disable_rebuild_verify =
+				page24->rebuild_without_verify;
+		}
+
+		if (ioa_cap.dual_ioa_raid || ioa_cap.dual_ioa_asymmetric_access) {
 			if (ioa_cap.dual_ioa_raid && page24->dual_adapter_af == ENABLE_DUAL_IOA_AF)
 				ioa->dual_raid_support = 1;
 
@@ -6564,8 +6573,8 @@ void check_current_config(bool allow_rebuild_refresh)
 	int *qac_entry_ref;
 	struct ipr_dev_identify_vpd di_vpd;
 	char *pchr;
-        struct ipr_mode_pages mode_pages;
-        struct ipr_ioa_mode_page *page;
+	struct ipr_mode_pages mode_pages;
+	struct ipr_ioa_mode_page *page;
 
 	if (ipr_qac_data == NULL) {
 		ipr_qac_data =
@@ -6619,9 +6628,12 @@ void check_current_config(bool allow_rebuild_refresh)
 			if (scsi_dev_data->host != ioa->host_num)
 				continue;
 
+			if (ioa->ioa.scsi_dev_data == scsi_dev_data)
+				continue;
+
 			if (scsi_dev_data->type == TYPE_DISK ||
 			    scsi_dev_data->type == IPR_TYPE_AF_DISK ||
-			    scsi_dev_data->type == IPR_TYPE_ADAPTER ||
+			    scsi_dev_data->type == IPR_TYPE_ARRAY ||
 			    scsi_dev_data->type == TYPE_ENCLOSURE ||
 			    scsi_dev_data->type == TYPE_ROM ||
 			    scsi_dev_data->type == TYPE_TAPE ||
@@ -6695,9 +6707,6 @@ void check_current_config(bool allow_rebuild_refresh)
 					__ipr_test_unit_ready(&ioa->dev[device_count], &sense_data);
 
 				device_count++;
-			} else if (scsi_dev_data->type == IPR_TYPE_ADAPTER) {
-				ioa->ioa.ioa = ioa;
-				ioa->ioa.scsi_dev_data = scsi_dev_data;
 			}
 		}
 
@@ -7206,6 +7215,15 @@ static int ipr_get_saved_dev_attr(struct ipr_dev *dev,
 			dev->scsi_dev_data->device_id);
 
 		rc = ipr_get_saved_attr(dev->ioa, category, field, value);
+
+		if (rc) {
+			/* Older kernels reported a byte swapped device_id, which has since
+			 been changed. Check both for compatibility reasons */
+			sprintf(category,"[%s %lx]", IPR_CATEGORY_DEVICE,
+				htobe64(dev->scsi_dev_data->device_id));
+
+			rc = ipr_get_saved_attr(dev->ioa, category, field, value);
+		}
 	}
 
 	if (rc) {
@@ -7751,6 +7769,13 @@ int ipr_set_ioa_attr(struct ipr_ioa *ioa, struct ipr_ioa_attr *attr, int save)
 	if (ipr_get_ioa_attr(ioa, &old_attr))
 		return -EIO;
 
+	if (ioa->has_vset_write_cache && attr->vset_write_cache) {
+		/* vset cache should not be disabled adapter-wide
+		 for any reason.  So we don't save the parameter here. */
+		ipr_change_cache_parameters(ioa,
+					    IPR_IOA_SET_VSET_CACHE_ENABLED);
+	}
+
 	/* FIXME - preferred_primary and active_active may change at the same
 	 * time.  This code may need to change.
  	 */
@@ -7821,14 +7846,6 @@ int ipr_set_ioa_attr(struct ipr_ioa *ioa, struct ipr_ioa_attr *attr, int save)
 			ipr_save_ioa_attr(ioa, IPR_ARRAY_DISABLE_REBUILD_VERIFY,
 					  temp, 1);
 		}
-	}
-
-	if (ioa->has_vset_write_cache && attr->vset_write_cache &&
-	    power_cur_mode != POWER_BAREMETAL) {
-		/* vset cache should not be disabled adapter-wide
-		   for any reason.  So we don't save the parameter here. */
-		ipr_change_cache_parameters(ioa,
-					    IPR_IOA_SET_VSET_CACHE_ENABLED);
 	}
 
 	get_dual_ioa_state(ioa);	/* for preferred_primary */
@@ -8569,7 +8586,7 @@ u32 get_fw_version(struct ipr_dev *dev)
 		return 0;
 	}
 
-	if (&dev->ioa->ioa == dev)
+	if (ipr_is_ioa(dev))
 		return get_ioa_fw_version(dev->ioa);
 
 	return get_dev_fw_version(dev);
@@ -8922,7 +8939,7 @@ struct ipr_fw_images *get_latest_fw_image(struct ipr_dev *dev)
 	if (!dev)
 		return NULL;
 
-	if (dev->scsi_dev_data->type == IPR_TYPE_ADAPTER)
+	if (ipr_is_ioa(dev))
 		get_ioa_firmware_image_list(dev->ioa, &fw);
 	else if (ipr_is_ses(dev))
 		get_ses_firmware_image_list(dev, &fw);
@@ -8952,7 +8969,7 @@ int get_latest_fw_image_version(struct ipr_dev *dev)
 	if (!dev)
 		return -ENODEV;
 
-	if (dev->scsi_dev_data->type == IPR_TYPE_ADAPTER)
+	if (ipr_is_ioa(dev))
 		get_ioa_firmware_image_list(dev->ioa, &fw);
 	else if (ipr_is_ses(dev))
 		get_ses_firmware_image_list(dev, &fw);
@@ -9292,6 +9309,37 @@ static int mode_select(struct ipr_dev *dev, void *buff, int length)
 	return rc;
 }
 
+
+int ipr_ses_get_time(struct ipr_dev *dev, u64* timestamp, int *origin)
+{
+	struct ipr_ses_diag_page12 get_time;
+	int err;
+
+	err = ipr_receive_diagnostics(dev, 0x12, &get_time, sizeof(get_time));
+	if (err)
+		return -EIO;
+
+	*origin = !!get_time.timestamp_origin;
+	*timestamp = be64toh(*((u64*) get_time.timestamp)) >> 16;
+	return 0;
+}
+
+int ipr_ses_set_time(struct ipr_dev *dev, u64 timestamp)
+{
+	struct ipr_ses_diag_ctrl_page13 set_time;
+
+	memset(&set_time, '\0', sizeof(set_time));
+
+	set_time.page_code = 0x13;
+	set_time.page_length[1] = 8;
+
+	timestamp = htobe64(timestamp << 16);
+	memcpy(set_time.timestamp, (char*) &
+	       timestamp, 6);
+
+	return ipr_send_diagnostics(dev, &set_time, sizeof(set_time));
+}
+
 /**
  * setup_page0x00 - 
  * @dev:		ipr dev struct
@@ -9545,7 +9593,6 @@ void ipr_count_devices_in_vset(struct ipr_dev *dev, int *num_devs,
 			devs_cnt++;
 			if (temp->block_dev_class & IPR_SSD)
 				ssd_devs_cnt++;
-			fprintf(stdout, "%s\n", temp->gen_name);
 		}
 	} else {
 		devs_cnt++;
@@ -9597,28 +9644,6 @@ static void init_vset_dev(struct ipr_dev *dev)
 	if (polling_mode && !dev->should_init)
 		return;
 
-	if (!ipr_query_resource_state(dev, &res_state)) {
-		ipr_count_devices_in_vset(dev, &num_devs, &ssd_num_devs);
-		depth = ipr_max_queue_depth(dev->ioa, num_devs, ssd_num_devs);
-
-		snprintf(q_depth, sizeof(q_depth), "%d", depth);
-		if (ipr_read_dev_attr(dev, "queue_depth", cur_depth, 100))
-			return;
-		rc = ipr_get_saved_dev_attr(dev, IPR_QUEUE_DEPTH, saved_depth);
-		if (rc == RC_SUCCESS) {
-			if (!strcmp(saved_depth, q_depth))
-				return;
-			depth = strtoul(saved_depth, NULL, 10);
-			if (depth && depth <= 255)
-				strcpy(q_depth, saved_depth);
-		}
-
-		if (!strcmp(cur_depth, q_depth))
-			return;
-		if (ipr_write_dev_attr(dev, "queue_depth", q_depth))
-			return;
-	}
-
 	if (dev->ioa->has_vset_write_cache) {
 		int pol;
 		rc = ipr_get_saved_dev_attr(dev, IPR_WRITE_CACHE_POLICY,
@@ -9628,7 +9653,26 @@ static void init_vset_dev(struct ipr_dev *dev)
 			IPR_DEV_CACHE_WRITE_BACK : IPR_DEV_CACHE_WRITE_THROUGH;
 
 		ipr_set_dev_wcache_policy(dev, pol);
+	}
 
+	if (!ipr_query_resource_state(dev, &res_state)) {
+		ipr_count_devices_in_vset(dev, &num_devs, &ssd_num_devs);
+		depth = ipr_max_queue_depth(dev->ioa, num_devs, ssd_num_devs);
+
+		snprintf(q_depth, sizeof(q_depth), "%d", depth);
+		if (ipr_read_dev_attr(dev, "queue_depth", cur_depth, 100))
+			return;
+		rc = ipr_get_saved_dev_attr(dev, IPR_QUEUE_DEPTH, saved_depth);
+		if (rc == RC_SUCCESS) {
+			depth = strtoul(saved_depth, NULL, 10);
+			if (depth && depth <= 255)
+				strcpy(q_depth, saved_depth);
+		}
+
+		if (!strcmp(cur_depth, q_depth))
+			return;
+		if (ipr_write_dev_attr(dev, "queue_depth", q_depth))
+			return;
 	}
 }
 
@@ -9801,7 +9845,7 @@ int ipr_init_dev(struct ipr_dev *dev)
 		init_af_dev(dev);
 		break;
 	case IPR_TYPE_ADAPTER:
-		if (&dev->ioa->ioa == dev)
+		if (ipr_is_ioa(dev))
 			init_ioa_dev(dev);
 		break;
 	case TYPE_ENCLOSURE:
@@ -9833,7 +9877,7 @@ int ipr_init_new_dev(struct ipr_dev *dev)
 		wait_for_dev(dev->dev_name);
 		break;
 	case IPR_TYPE_ADAPTER:
-		if (&dev->ioa->ioa != dev)
+		if (!ipr_is_ioa(dev))
 			break;
 	case IPR_TYPE_AF_DISK:
 		wait_for_dev(dev->gen_name);
@@ -10324,32 +10368,21 @@ int ipr_jbod_sysfs_bind(struct ipr_dev *dev, u8 op)
 	return 0;
 }
 
-int ipr_ses_get_time(struct ipr_dev *dev, u64* timestamp, int *origin)
+int check_sg_module()
 {
-	struct ipr_ses_diag_page12 get_time;
-	int err;
+	DIR *sg_dirfd;
+	char devpath[PATH_MAX];
 
-	err = ipr_receive_diagnostics(dev, 0x12, &get_time, sizeof(get_time));
-	if (err)
-		return -EIO;
+	sprintf(devpath, "%s", "/sys/module/sg");
 
-	*origin = !!get_time.timestamp_origin;
-	*timestamp = be64toh(*((u64*) get_time.timestamp)) >> 16;
+	sg_dirfd = opendir(devpath);
+
+	if (!sg_dirfd) {
+		syslog_dbg("Failed to open sg parameter.\n");
+		return -1;
+	}
+
+	closedir(sg_dirfd);
+
 	return 0;
-}
-
-int ipr_ses_set_time(struct ipr_dev *dev, u64 timestamp)
-{
-	struct ipr_ses_diag_ctrl_page13 set_time;
-
-	memset(&set_time, '\0', sizeof(set_time));
-
-	set_time.page_code = 0x13;
-	set_time.page_length[1] = 8;
-
-	timestamp = htobe64(timestamp << 16);
-	memcpy(set_time.timestamp, (char*) &
-	       timestamp, 6);
-
-	return ipr_send_diagnostics(dev, &set_time, sizeof(set_time));
 }

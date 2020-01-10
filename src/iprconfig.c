@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <libgen.h>
 
 #include <math.h>
 
@@ -1803,7 +1804,7 @@ int main_menu(i_container *i_con)
 	for_each_ioa(ioa) {
 		for (j = 0; j < ioa->num_devices; j++) {
 			scsi_dev_data = ioa->dev[j].scsi_dev_data;
-			if (!scsi_dev_data || scsi_dev_data->type == IPR_TYPE_ADAPTER)
+			if (ipr_is_ioa(&ioa->dev[j]))
 				continue;
 			verify_device(&ioa->dev[j]);
 		}
@@ -2819,7 +2820,7 @@ int device_details(i_container *i_con)
 	if ((rc = device_details_get_device(i_con, &dev)))
 		return rc;
 
-	if (dev->scsi_dev_data && dev->scsi_dev_data->type == IPR_TYPE_ADAPTER) {
+	if (ipr_is_ioa(dev)) {
 		n_screen = &n_adapter_details;
 		body = ioa_details(body, dev);
 	} else if (ipr_is_volume_set(dev)) {
@@ -2885,6 +2886,8 @@ int statistics_menu(i_container *i_con)
 	char *buffer[2];
 	int toggle = 1;
 	struct ipr_dev *vset;
+	struct ipr_sas_std_inq_data std_inq;
+
 	processing();
 
 	rc = RC_SUCCESS;
@@ -2897,7 +2900,18 @@ int statistics_menu(i_container *i_con)
 		if (!ioa->ioa.scsi_dev_data)
 			continue;
 
-		num_lines += print_standalone_disks(ioa, &i_con, buffer, 2);
+		__for_each_standalone_disk(ioa, dev) {
+			if (ipr_is_gscsi(dev)) {
+				rc = ipr_inquiry(dev, IPR_STD_INQUIRY, &std_inq, sizeof(std_inq));
+				if (rc || !std_inq.is_ssd)
+					continue;
+			}
+
+			print_dev(k, dev, buffer, "%1", 2+k);
+			i_con = add_i_con(i_con, "\0", dev);
+			num_lines++;
+		}
+
 		num_lines += print_hotspare_disks(ioa, &i_con, buffer, 2);
 
 		for_each_vset(ioa, vset) {
@@ -8025,6 +8039,9 @@ static struct ipr_dev *get_dev_for_slot_64bit(struct ipr_dev *ses, int slot, cha
 		if (ses_path_len != res_path_len)
 			continue;
 
+		if (ipr_is_volume_set(dev) || ipr_is_array(dev))
+			continue;
+
 		for_each_rp(rp, dev) {
 			if ( !memcmp(&rp->res_path_bytes, &ses->res_path[0], ses_path_len/3) && slot == dev_slot ) {
 
@@ -11771,7 +11788,7 @@ static int update_ucode(struct ipr_dev *dev, struct ipr_fw_images *fw_image)
 			time_screen_driver(&n_download_ucode_in_progress, time, 0);
 		} while (done == 0);			
 	} else {
-		if (dev->scsi_dev_data && dev->scsi_dev_data->type == IPR_TYPE_ADAPTER)
+		if (ipr_is_ioa(dev))
 			ipr_update_ioa_fw(dev->ioa, fw_image, 1);
 		else
 			ipr_update_disk_fw(dev, fw_image, 1);
@@ -11905,7 +11922,7 @@ int process_choose_ucode(struct ipr_dev *dev)
 
 	if (!dev->scsi_dev_data)
 		return 67 | EXIT_FLAG;
-	if (dev->scsi_dev_data->type == IPR_TYPE_ADAPTER)
+	if (ipr_is_ioa(dev))
 		rc = get_ioa_firmware_image_list(dev->ioa, &list);
 	else if (dev->scsi_dev_data->type == TYPE_ENCLOSURE || dev->scsi_dev_data->type == TYPE_PROCESSOR)
 		rc = get_ses_firmware_image_list(dev, &list);
@@ -11919,8 +11936,7 @@ int process_choose_ucode(struct ipr_dev *dev)
 
 	ipr_get_fw_version(dev, release_level);
 
-	if (dev->scsi_dev_data &&
-	    dev->scsi_dev_data->type == IPR_TYPE_ADAPTER) {
+	if (ipr_is_ioa(dev)) {
 		sprintf(buffer, _("Adapter to download: %-8s %-16s\n"),
 			dev->scsi_dev_data->vendor_id,
 			dev->scsi_dev_data->product_id);
@@ -12895,7 +12911,7 @@ static void get_status(struct ipr_dev *dev, char *buf, int percent, int path_sta
 	int initialization_in_progress = 0;
 	struct ipr_res_redundancy_info info;
 
-	if (scsi_dev_data && scsi_dev_data->type == IPR_TYPE_ADAPTER && dev == &ioa->ioa) {
+	if (ipr_is_ioa(dev)) {
 		if (!scsi_dev_data->online)
 			sprintf(buf, "Offline");
 		else if (ioa->ioa_dead)
@@ -13452,7 +13468,7 @@ char *__print_device(struct ipr_dev *dev, char *body, char *option,
 		if (res_path) {
 			if (ioa->sis64)
 				if (serial_num == 1) {
-					if (scsi_dev_data && scsi_dev_data->type == IPR_TYPE_ADAPTER)
+					if (ipr_is_ioa(dev))
 						loc_len = sprintf(body + len, "%s/%-28d", ioa->pci_address, ioa->host_num);
 					else {
 						ipr_format_res_path(dev->res_path[ra].res_path_bytes, res_path_name, IPR_MAX_RES_PATH_LEN);
@@ -13467,7 +13483,7 @@ char *__print_device(struct ipr_dev *dev, char *body, char *option,
 					scsi_dev_data->res_path : "<unknown>");
 			else /*32bit*/
 				if (serial_num == 1) {
-					if (scsi_dev_data && scsi_dev_data->type == IPR_TYPE_ADAPTER)
+					if (ipr_is_ioa(dev))
 						loc_len = sprintf(body + len, "%s/%-29d:", ioa->pci_address, ioa->host_num);
 					else
 						loc_len = sprintf(body + len, "%s/%d", ioa->pci_address, ioa->host_num);
@@ -13486,7 +13502,7 @@ char *__print_device(struct ipr_dev *dev, char *body, char *option,
 		}
 	}
 
-	if (scsi_dev_data && scsi_dev_data->type == IPR_TYPE_ADAPTER && dev == &ioa->ioa) {
+	if (ipr_is_ioa(dev)) {
 		if (serial_num == 1 ) {
 			if (!res_path || !ioa->sis64) {
 				for (i = 0; i < 28-loc_len; i++)
@@ -14628,7 +14644,7 @@ static int query_raid_create(char **args, int num_args)
 		return -EINVAL;
 	}
 
-	if (&dev->ioa->ioa != dev) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "Device is not an IOA\n");
 		return -EINVAL;
 	}
@@ -14676,7 +14692,7 @@ static int query_raid_delete(char **args, int num_args)
 		return -EINVAL;
 	}
 
-	if (&dev->ioa->ioa != dev) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "Device is not an IOA\n");
 		return -EINVAL;
 	}
@@ -15406,7 +15422,7 @@ static int set_log_level_cmd(char **args, int num_args)
 		return -EINVAL;
 	}
 
-	if (&dev->ioa->ioa != dev) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "Device is not an IOA\n");
 		return -EINVAL;
 	}
@@ -15705,7 +15721,7 @@ static int update_ucode_cmd(char **args, int num_args)
 		return -EINVAL;
 	}
 
-	if (&dev->ioa->ioa == dev)
+	if (ipr_is_ioa(dev))
 		return update_ioa_ucode(dev->ioa, args[1]);
 	else
 		return update_dev_ucode(dev, args[1]);
@@ -15729,7 +15745,7 @@ static int update_all_ucodes(char **args, int num_args)
 
 	for_each_ioa(ioa) {
 		if (!ioa->ioa.scsi_dev_data)
-			return;
+			continue;
 		for_each_dev(ioa, dev) {
 			if (ipr_is_volume_set(dev))
 				continue;
@@ -15738,7 +15754,7 @@ static int update_all_ucodes(char **args, int num_args)
 			if (!lfw || lfw->version <= get_fw_version(dev))
 				continue;
 
-			if (&dev->ioa->ioa == dev)
+			if (ipr_is_ioa(dev))
 				rc = update_ioa_ucode(dev->ioa, lfw->file);
 			else
 				rc = update_dev_ucode(dev, lfw->file);
@@ -15997,7 +16013,7 @@ static int query_path_status(char **args, int num_args)
 
 	printf("%s\n%s\n", status_hdr[2], status_sep[2]);
 
-	if (&dev->ioa->ioa == dev)
+	if (ipr_is_ioa(dev))
 		printf_ioa_path_status(dev->ioa);
 	else
 		printf_path_status(dev);
@@ -16428,7 +16444,7 @@ static int query_log_level(char **args, int num_args)
 		return -EINVAL;
 	}
 
-	if (&dev->ioa->ioa != dev) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "Device is not an IOA\n");
 		return -EINVAL;
 	}
@@ -16545,7 +16561,7 @@ static int query_ucode_level(char **args, int num_args)
 		return -EINVAL;
 	}
 
-	if (&dev->ioa->ioa == dev)
+	if (ipr_is_ioa(dev))
 		printf("%08X\n", get_fw_version(dev));
 	else {
 		level = get_fw_version(dev);
@@ -16905,7 +16921,8 @@ static int query_raid_levels_raid_migrate(char **args, int num_args)
 	}
 
 	if (!dev->array_rcd->migrate_cand) {
-		scsi_err(dev, "%s is not a candidate for array migration.\n");
+		scsi_err(dev, "%s is not a candidate for array migration.\n",
+			 args[0]);
 		return -EINVAL;
 	}
 
@@ -17125,7 +17142,7 @@ static int query_ioa_asym_access_mode(char **args, int num_args)
 		fprintf(stderr, "Cannot find %s\n", args[0]);
 		return -EINVAL;
 	}
-	if (dev != &dev->ioa->ioa) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "%s is not an IOA.\n", args[0]);
 		return -EINVAL;
 	}
@@ -17224,9 +17241,7 @@ static void show_dev_details(struct ipr_dev *dev)
 {
 	char *body = NULL;
 
-	if (dev->scsi_dev_data &&
-	    dev->scsi_dev_data->type == IPR_TYPE_ADAPTER &&
-	    dev == &dev->ioa->ioa)
+	if (ipr_is_ioa(dev))
 		body = ioa_details(body, dev);
 	else if (ipr_is_volume_set(dev) || ipr_is_array(dev))
 		body = vset_array_details(body, dev);
@@ -17693,7 +17708,7 @@ static int check_and_set_active_active(char *dev_name, int mode)
 		fprintf(stderr, "Cannot find %s\n", dev_name);
 		return -EINVAL;
 	}
-	if (dev != &dev->ioa->ioa) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "%s is not an IOA.\n", dev_name);
 		return -EINVAL;
 	}
@@ -18048,7 +18063,7 @@ static int query_location(char **args, int num_args)
 	get_drive_phy_loc(dev->ioa);
 
 	if (!ipr_is_volume_set(dev)){
-		if (&dev->ioa->ioa == dev)
+		if (ipr_is_ioa(dev))
 			fprintf(stdout, "%s\n", dev->ioa->physical_location);
 		else
 			fprintf(stdout, "%s\n", dev->physical_location);
@@ -18086,7 +18101,7 @@ static int query_ioa_caching(char **args, int num_args)
 		fprintf(stderr, "Cannot find %s\n", args[0]);
 		return -EINVAL;
 	}
-	if (dev != &dev->ioa->ioa) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "%s is not an IOA.\n", args[0]);
 		return -EINVAL;
 	}
@@ -18133,7 +18148,7 @@ static int set_ioa_caching(char **args, int num_args)
 		fprintf(stderr, "Cannot find %s\n", args[0]);
 		return -EINVAL;
 	}
-	if (dev != &dev->ioa->ioa) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "%s is not an IOA.\n", args[0]);
 		return -EINVAL;
 	}
@@ -18184,7 +18199,7 @@ static int set_array_rebuild_verify(char **args, int num_args)
 		fprintf(stderr, "Cannot find %s\n", args[0]);
 		return -EINVAL;
 	}
-	if (dev != &dev->ioa->ioa) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "%s is not an IOA.\n", args[0]);
 		return -EINVAL;
 	}
@@ -18243,7 +18258,7 @@ static int query_array_rebuild_verify(char **args, int num_args)
 		fprintf(stderr, "Cannot find %s\n", args[0]);
 		return -EINVAL;
 	}
-	if (dev != &dev->ioa->ioa) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "%s is not an IOA.\n", args[0]);
 		return -EINVAL;
 	}
@@ -18280,7 +18295,7 @@ static int set_array_rebuild_rate(char**args, int num_args)
 		fprintf(stderr, "Cannot find %s\n", args[0]);
 		return -EINVAL;
 	}
-	if (dev != &dev->ioa->ioa) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "%s is not an IOA.\n", args[0]);
 		return -EINVAL;
 	}
@@ -18344,7 +18359,7 @@ static int query_array_rebuild_rate(char**args, int num_args)
 		fprintf(stderr, "Cannot find %s\n", args[0]);
 		return -EINVAL;
 	}
-	if (dev != &dev->ioa->ioa) {
+	if (!ipr_is_ioa(dev)) {
 		fprintf(stderr, "%s is not an IOA.\n", args[0]);
 		return -EINVAL;
 	}
@@ -18645,7 +18660,7 @@ int enclosures_fork(i_container *i_con)
 		input = temp_i_con->field_data;
 
 		if (strcmp(input, "3") == 0) {
-				if (ses->scsi_dev_data && ses->scsi_dev_data->type == IPR_TYPE_ADAPTER && ses == &ses->ioa->ioa) 
+			if (ipr_is_ioa(ses))
 				return RC_89_Invalid_Dev_For_Resume;
 
 			if (ses->active_suspend == IOA_DEV_PORT_UNKNOWN)	
@@ -18657,7 +18672,7 @@ int enclosures_fork(i_container *i_con)
 			ses->is_resume_cand = 1;
 			resume_flag = 1;
 		} else if (strcmp(input, "2") == 0) {
-				if (ses->scsi_dev_data && ses->scsi_dev_data->type == IPR_TYPE_ADAPTER && ses == &ses->ioa->ioa) 
+				if (ipr_is_ioa(ses))
 					return RC_88_Invalid_Dev_For_Suspend;
 
 				if (ses->active_suspend == IOA_DEV_PORT_UNKNOWN)	
@@ -18774,7 +18789,7 @@ static int suspend_disk_enclosure(char **args, int num_args)
 	ses = find_dev(args[0]);
 	get_ses_ioport_status(ses);
 
-	if (ses->scsi_dev_data && ses->scsi_dev_data->type == IPR_TYPE_ADAPTER && ses == &ses->ioa->ioa)  {
+	if (ipr_is_ioa(ses))  {
 		fprintf(stderr,"Incorrect device type specified. Please specify a valid SAS device to suspend.\n");
 		return 1;
 	}
@@ -18827,7 +18842,7 @@ static int resume_disk_enclosure(char **args, int num_args)
 	ses = find_dev(args[0]);
 	get_ses_ioport_status(ses);
 
-	if (ses->scsi_dev_data && ses->scsi_dev_data->type == IPR_TYPE_ADAPTER && ses == &ses->ioa->ioa) {
+	if (ipr_is_ioa(ses)) {
 		fprintf(stderr,"Incorrect device type specified. Please specify a valid SAS device to resume.\n");
 		return 1;
 	}
@@ -19032,6 +19047,9 @@ static int dump (char **args, int num_args)
 
 	printf("\n === Running show-details ===\n");
 	for_each_ioa(ioa){
+		printf("IOA %s:\n", ioa->ioa.gen_name);
+		show_dev_details(&ioa->ioa);
+
 		for_each_dev(ioa, dev){
 			printf("Device %s:\n", dev->gen_name);
 			show_dev_details(dev);
@@ -19416,25 +19434,6 @@ static int non_intenactive_cmd(char *cmd, char **args, int num_args)
 	return -EINVAL;
 }
 
-int check_sg_module()
-{
-	DIR *sg_dirfd;
-	char devpath[PATH_MAX];
-
-	sprintf(devpath, "%s", "/sys/module/sg");
-
-	sg_dirfd = opendir(devpath);
-
-	if (!sg_dirfd) {
-		syslog_dbg("Failed to open sg parameter.\n");
-		return -1;
-	}
-
-	closedir(sg_dirfd);
-
-	return 0;
-}
-
 void list_options()
 {
 	int i;
@@ -19456,6 +19455,7 @@ int main(int argc, char *argv[])
 	char parm_editor[200], parm_dir[200], cmd[200];
 	int non_intenactive = 0;
 
+	tool_init_retry = 0;
 	strcpy(parm_dir, DEFAULT_LOG_DIR);
 	strcpy(parm_editor, DEFAULT_EDITOR);
 

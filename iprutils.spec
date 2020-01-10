@@ -1,12 +1,12 @@
 Summary: Utilities for the IBM Power Linux RAID adapters
 Name:    iprutils
-Version: 2.4.13.1
+Version: 2.4.14.1
 Release: 1%{?dist}
 License: CPL
 Group:   System Environment/Base
 URL:     http://sourceforge.net/projects/iprdd/
 
-Source0: https://sourceforge.net/projects/iprdd/files/iprutils%20for%202.6%20kernels/2.4.13/%{name}-%{version}.tar.gz
+Source0: https://sourceforge.net/projects/iprdd/files/iprutils%20for%202.6%20kernels/2.4.14/%{name}-%{version}.tar.gz
 
 # missing man page
 Source1: iprdbg.8.gz
@@ -95,6 +95,9 @@ mkdir -p $RPM_BUILD_ROOT/%{_unitdir}
 %{_sysconfdir}/bash_completion.d
 
 %changelog
+* Tue Feb 07 2017 Sinny Kumari <skumari@redhat.com> - 2.4.14.1-1
+- Resolves: #1384382 - [7.4 FEAT] iprutils package update - ppc64/ppc64le
+
 * Tue Aug 23 2016 Sinny Kumari <skumari@redhat.com> - 2.4.13.1-1
 - Rebase to upstream release 2.4.13.1
 - Resolves: #1369259 - Fix known zeroed state tracking
