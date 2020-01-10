@@ -88,9 +88,9 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-subdir = systemd
+subdir = udev
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
-	$(dist_systemdunit_DATA)
+	$(dist_udevrules_DATA)
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/build-aux/libtool.m4 \
 	$(top_srcdir)/build-aux/ltoptions.m4 \
@@ -149,9 +149,8 @@ am__uninstall_files_from_dir = { \
     || { echo " ( cd '$$dir' && rm -f" $$files ")"; \
          $(am__cd) "$$dir" && rm -f $$files; }; \
   }
-am__installdirs = "$(DESTDIR)$(systemdunitdir)" \
-	"$(DESTDIR)$(systemdunitdir)"
-DATA = $(dist_systemdunit_DATA) $(nodist_systemdunit_DATA)
+am__installdirs = "$(DESTDIR)$(udevrulesdir)"
+DATA = $(dist_udevrules_DATA)
 am__tagged_files = $(HEADERS) $(SOURCES) $(TAGS_FILES) $(LISP)
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 ACLOCAL = @ACLOCAL@
@@ -281,13 +280,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 udevrulesdir = @udevrulesdir@
-nodist_systemdunit_DATA = iprdump.service \
-	iprinit.service iprupdate.service
-
-EXTRA_DIST = iprdump.service.in \
-	iprinit.service.in iprupdate.service.in
-
-dist_systemdunit_DATA = iprutils.target
+dist_udevrules_DATA = 90-iprutils.rules
 all: all-am
 
 .SUFFIXES:
@@ -300,9 +293,9 @@ $(srcdir)/Makefile.in:  $(srcdir)/Makefile.am  $(am__configure_deps)
 	      exit 1;; \
 	  esac; \
 	done; \
-	echo ' cd $(top_srcdir) && $(AUTOMAKE) --foreign systemd/Makefile'; \
+	echo ' cd $(top_srcdir) && $(AUTOMAKE) --foreign udev/Makefile'; \
 	$(am__cd) $(top_srcdir) && \
-	  $(AUTOMAKE) --foreign systemd/Makefile
+	  $(AUTOMAKE) --foreign udev/Makefile
 .PRECIOUS: Makefile
 Makefile: $(srcdir)/Makefile.in $(top_builddir)/config.status
 	@case '$?' in \
@@ -327,48 +320,27 @@ mostlyclean-libtool:
 
 clean-libtool:
 	-rm -rf .libs _libs
-install-dist_systemdunitDATA: $(dist_systemdunit_DATA)
+install-dist_udevrulesDATA: $(dist_udevrules_DATA)
 	@$(NORMAL_INSTALL)
-	@list='$(dist_systemdunit_DATA)'; test -n "$(systemdunitdir)" || list=; \
+	@list='$(dist_udevrules_DATA)'; test -n "$(udevrulesdir)" || list=; \
 	if test -n "$$list"; then \
-	  echo " $(MKDIR_P) '$(DESTDIR)$(systemdunitdir)'"; \
-	  $(MKDIR_P) "$(DESTDIR)$(systemdunitdir)" || exit 1; \
+	  echo " $(MKDIR_P) '$(DESTDIR)$(udevrulesdir)'"; \
+	  $(MKDIR_P) "$(DESTDIR)$(udevrulesdir)" || exit 1; \
 	fi; \
 	for p in $$list; do \
 	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
 	  echo "$$d$$p"; \
 	done | $(am__base_list) | \
 	while read files; do \
-	  echo " $(INSTALL_DATA) $$files '$(DESTDIR)$(systemdunitdir)'"; \
-	  $(INSTALL_DATA) $$files "$(DESTDIR)$(systemdunitdir)" || exit $$?; \
+	  echo " $(INSTALL_DATA) $$files '$(DESTDIR)$(udevrulesdir)'"; \
+	  $(INSTALL_DATA) $$files "$(DESTDIR)$(udevrulesdir)" || exit $$?; \
 	done
 
-uninstall-dist_systemdunitDATA:
+uninstall-dist_udevrulesDATA:
 	@$(NORMAL_UNINSTALL)
-	@list='$(dist_systemdunit_DATA)'; test -n "$(systemdunitdir)" || list=; \
+	@list='$(dist_udevrules_DATA)'; test -n "$(udevrulesdir)" || list=; \
 	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
-	dir='$(DESTDIR)$(systemdunitdir)'; $(am__uninstall_files_from_dir)
-install-nodist_systemdunitDATA: $(nodist_systemdunit_DATA)
-	@$(NORMAL_INSTALL)
-	@list='$(nodist_systemdunit_DATA)'; test -n "$(systemdunitdir)" || list=; \
-	if test -n "$$list"; then \
-	  echo " $(MKDIR_P) '$(DESTDIR)$(systemdunitdir)'"; \
-	  $(MKDIR_P) "$(DESTDIR)$(systemdunitdir)" || exit 1; \
-	fi; \
-	for p in $$list; do \
-	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
-	  echo "$$d$$p"; \
-	done | $(am__base_list) | \
-	while read files; do \
-	  echo " $(INSTALL_DATA) $$files '$(DESTDIR)$(systemdunitdir)'"; \
-	  $(INSTALL_DATA) $$files "$(DESTDIR)$(systemdunitdir)" || exit $$?; \
-	done
-
-uninstall-nodist_systemdunitDATA:
-	@$(NORMAL_UNINSTALL)
-	@list='$(nodist_systemdunit_DATA)'; test -n "$(systemdunitdir)" || list=; \
-	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
-	dir='$(DESTDIR)$(systemdunitdir)'; $(am__uninstall_files_from_dir)
+	dir='$(DESTDIR)$(udevrulesdir)'; $(am__uninstall_files_from_dir)
 tags TAGS:
 
 ctags CTAGS:
@@ -410,7 +382,7 @@ check-am: all-am
 check: check-am
 all-am: Makefile $(DATA)
 installdirs:
-	for dir in "$(DESTDIR)$(systemdunitdir)" "$(DESTDIR)$(systemdunitdir)"; do \
+	for dir in "$(DESTDIR)$(udevrulesdir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: install-am
@@ -445,7 +417,7 @@ maintainer-clean-generic:
 	@echo "it deletes files that may require special tools to rebuild."
 clean: clean-am
 
-clean-am: clean-generic clean-libtool clean-local mostlyclean-am
+clean-am: clean-generic clean-libtool mostlyclean-am
 
 distclean: distclean-am
 	-rm -f Makefile
@@ -463,8 +435,7 @@ info: info-am
 
 info-am:
 
-install-data-am: install-dist_systemdunitDATA \
-	install-nodist_systemdunitDATA
+install-data-am: install-dist_udevrulesDATA
 
 install-dvi: install-dvi-am
 
@@ -508,32 +479,23 @@ ps: ps-am
 
 ps-am:
 
-uninstall-am: uninstall-dist_systemdunitDATA \
-	uninstall-nodist_systemdunitDATA
+uninstall-am: uninstall-dist_udevrulesDATA
 
 .MAKE: install-am install-strip
 
 .PHONY: all all-am check check-am clean clean-generic clean-libtool \
-	clean-local cscopelist-am ctags-am distclean distclean-generic \
+	cscopelist-am ctags-am distclean distclean-generic \
 	distclean-libtool distdir dvi dvi-am html html-am info info-am \
 	install install-am install-data install-data-am \
-	install-dist_systemdunitDATA install-dvi install-dvi-am \
+	install-dist_udevrulesDATA install-dvi install-dvi-am \
 	install-exec install-exec-am install-html install-html-am \
-	install-info install-info-am install-man \
-	install-nodist_systemdunitDATA install-pdf install-pdf-am \
-	install-ps install-ps-am install-strip installcheck \
-	installcheck-am installdirs maintainer-clean \
+	install-info install-info-am install-man install-pdf \
+	install-pdf-am install-ps install-ps-am install-strip \
+	installcheck installcheck-am installdirs maintainer-clean \
 	maintainer-clean-generic mostlyclean mostlyclean-generic \
 	mostlyclean-libtool pdf pdf-am ps ps-am tags-am uninstall \
-	uninstall-am uninstall-dist_systemdunitDATA \
-	uninstall-nodist_systemdunitDATA
+	uninstall-am uninstall-dist_udevrulesDATA
 
-
-%.service: %.service.in
-	sed -e 's,[@]sbindir[@],$(sbindir),g' < $< > $@
-
-clean-local:
-	-rm iprdump.service iprinit.service iprupdate.service
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

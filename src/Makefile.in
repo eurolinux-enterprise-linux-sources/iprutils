@@ -94,7 +94,7 @@ sbin_PROGRAMS = iprconfig$(EXEEXT) iprdump$(EXEEXT) iprupdate$(EXEEXT) \
 	iprinit$(EXEEXT) iprdbg$(EXEEXT) $(am__EXEEXT_1) \
 	$(am__EXEEXT_2)
 @STATIC_BUILD_TRUE@am__append_1 = iprconfig-static
-@SYSTEMD_TRUE@am__append_2 = systemd
+@SYSTEMD_TRUE@am__append_2 = systemd udev
 @IPRDUMPFMT_TRUE@am__append_3 = iprdumpfmt
 @IPRDUMPFMT_TRUE@am__append_4 = iprdumpfmt.8
 subdir = .
@@ -281,7 +281,7 @@ am__define_uniq_tagged_files = \
 ETAGS = etags
 CTAGS = ctags
 CSCOPE = cscope
-DIST_SUBDIRS = . init.d spec systemd
+DIST_SUBDIRS = . init.d spec systemd udev
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 distdir = $(PACKAGE)-$(VERSION)
 top_distdir = $(distdir)
@@ -450,6 +450,7 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
+udevrulesdir = @udevrulesdir@
 noinst_LTLIBRARIES = libipr.la
 libipr_la_SOURCES = iprlib.c iprlib.h
 dist_sbin_SCRIPTS = iprsos

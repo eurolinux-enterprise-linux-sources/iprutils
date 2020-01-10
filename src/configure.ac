@@ -10,7 +10,7 @@
 AC_PREREQ([2.63])
 # For RC releases, version should be set to 2.4.10.0.rc1, 2.4.10.0.rc2, etc.
 # For GA releases, version should be set to 2.4.10.1, 2.4.10.2, etc.
-AC_INIT([iprutils], [2.4.16.1], [iprdd-devel@lists.sourceforge.net])
+AC_INIT([iprutils], [2.4.17.1], [iprdd-devel@lists.sourceforge.net])
 
 AM_INIT_AUTOMAKE([1.9 foreign])
 AC_CONFIG_MACRO_DIR([build-aux])
@@ -19,11 +19,6 @@ AC_CONFIG_MACRO_DIR([build-aux])
 AC_PROG_CC
 AC_PROG_INSTALL
 LT_INIT
-
-ncurses_include=$(ncurses5-config --cflags)
-if test -n ${ncurses_include}; then
-  CFLAGS="${CFLAGS} ${ncurses_include}"
-fi
 
 AC_ARG_ENABLE([build_static],
               [--enable-build-static Generate statically linked binaries],
@@ -75,6 +70,7 @@ AM_CONDITIONAL([IPRDUMPFMT], [test "x${iprdumpfmt}" = xtrue])
 
 # --with-systemd
 systemdunitdir='${exec_prefix}/lib/systemd/system/'
+udevrulesdir='${exec_prefix}/lib/udev/rules.d/'
 AC_ARG_WITH([systemd],
 	    [--without-systemd Disable systemd service files.],
 [case $withval in
@@ -91,6 +87,7 @@ AC_ARG_WITH([systemd],
  esac], [systemd=true])
 AM_CONDITIONAL([SYSTEMD], [test "x${systemd}" = xtrue])
 AC_SUBST(systemdunitdir, ${systemdunitdir})
+AC_SUBST(udevrulesdir, ${udevrulesdir})
 
 # --with-initd
 initddir="${prefix}/etc/init.d/"
@@ -137,6 +134,19 @@ IPRCONFIG_LIBS="$LIBS"
 AC_SUBST([IPRCONFIG_LIBS])
 LIBS="$save_LIBS"
 
+ncurses_config=$(which ncurses5-config 2> /dev/null)
+if ! test -n ${ncurses_config}; then
+  ncurses_config=$(which ncurses6-config 2> /dev/null)
+fi
+
+if test -n ${ncurses_config}; then
+  ncurses_include=$(${ncurses_config} --cflags)
+
+  if test -n "${ncurses_include}"; then
+    CFLAGS="${CFLAGS} ${ncurses_include}"
+  fi
+fi
+
 # Checks for header files.
 AC_CHECK_HEADERS([fcntl.h locale.h netinet/in.h nl_types.h \
 		 paths.h stddef.h stdint.h stdlib.h string.h sys/file.h \
@@ -159,5 +169,5 @@ AC_CHECK_FUNCS([getcwd isascii memset mkdir munmap pow setenv setlocale \
 	       socket strcasecmp strchr strncasecmp strrchr strstr \
 	       strtol strtoul strtoull])
 
-AC_CONFIG_FILES([Makefile systemd/Makefile init.d/Makefile spec/Makefile])
+AC_CONFIG_FILES([Makefile systemd/Makefile init.d/Makefile spec/Makefile udev/Makefile])
 AC_OUTPUT

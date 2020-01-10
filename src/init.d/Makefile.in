@@ -279,6 +279,7 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
+udevrulesdir = @udevrulesdir@
 @INITD_TRUE@nodist_initd_SCRIPTS = iprdump iprinit iprupdate
 nodist_sysconf_DATA = iprha
 EXTRA_DIST = iprdump.in iprinit.in iprupdate.in iprha.in
