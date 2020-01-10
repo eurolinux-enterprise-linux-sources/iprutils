@@ -1483,7 +1483,6 @@ struct ipr_dev {
 	u8 active_suspend;
 	u32 is_suspend_cand:1;
 	u32 is_resume_cand:1;
-	u8 write_cache_policy:1;
 	u8 supports_4k:1;
 	u8 supports_5xx:1;
 	u8 read_c7:1;
@@ -2646,6 +2645,7 @@ struct ipr_encl_status_ctl_pg {
 	u16 byte_count;
 	u8 reserved1[4];
 	struct ipr_drive_elem_status elem_status[IPR_NUM_DRIVE_ELEM_STATUS_ENTRIES];
+	u8 reserved2[468];	/*rest of page 2*/
 };
 
 struct ipr_ses_config_pg {
