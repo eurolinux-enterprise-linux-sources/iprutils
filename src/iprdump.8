@@ -1,0 +1,50 @@
+.\" (C) Copyright 2000, 2004
+.\" International Business Machines Corporation and others.
+.\" All Rights Reserved. This program and the accompanying
+.\" materials are made available under the terms of the
+.\" Common Public License v1.0 which accompanies this distribution.
+.TH IPRDUMP 8 "February 2005"
+.SH NAME
+iprdump - IBM Power RAID adapter dump utility
+.SH SYNOPSIS
+.B "iprdump [-d directory]"
+.sp
+.BI "iprdump --version --debug --use-polling --use-uevents"
+.SH DESCRIPTION
+.B iprdump
+is used to gather information in the event of an adapter failure.
+The dump data will by default be saved in the /var/log/ directory with the
+prefix iprdump.# where # will be the dump ID of the file. The ipr dump
+utility will make a log in the system error log when a dump is taken. 
+Iprdump should be started as a service daemon instead of run directly. Nevertheless, 
+it can also be started at any time and will properly handle adapters being 
+dynamically added and removed from the system. When it is run directly it will 
+stay running forever in order to process any dump that might occur. You can 
+start it with "iprdump --daemon" to force it into the background.
+.SH OPTIONS
+.TP
+.B \-\-version
+Print the version number of
+.B iprdump
+.TP
+.B \-\-debug
+Enable additional error logging. Enabling this will result in additional 
+errors logging to /var/log/messages.
+.TP
+.B \-d <directory>
+Directory where dump data is to be stored.  Default is /var/log/.
+.TP
+.B \-\-use-polling
+Do not use netlink/uevent notification, but rather poll for adapter and
+device configuration changes.
+.TP
+.B \-\-use-uevents
+Use netlink/uevent notification rather than polling for adapter and
+device configuration changes. If not specified, polling will be used
+until the first uevent notification appears, then netlink will be used.
+.TP
+.B \-\-daemon
+Force the daemon to be run in the background
+.SH AUTHOR
+Originally written by Michael Anderson <mjanders@us.ibm.com>. Rewritten
+for the 2.6 kernel by Brian King <brking@us.ibm.com>.

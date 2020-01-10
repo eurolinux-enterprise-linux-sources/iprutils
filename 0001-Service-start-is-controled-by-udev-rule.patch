@@ -1,0 +1,65 @@
+From fed37f858254734b26c09f3b52b51cb63d102229 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Jakub=20=C4=8Cajka?= <jcajka@redhat.com>
+Date: Mon, 1 Sep 2014 14:03:56 +0200
+Subject: [PATCH] Service start is controled by udev rule
+
+---
+ systemd/iprdump.service        | 2 +-
+ systemd/iprinit.service        | 2 +-
+ systemd/iprupdate.service      | 2 +-
+ systemd/iprutils.target        | 7 +++++++
+ udev/rules.d/90-iprutils.rules | 1 +
+ 5 files changed, 11 insertions(+), 3 deletions(-)
+ create mode 100644 systemd/iprutils.target
+ create mode 100644 udev/rules.d/90-iprutils.rules
+
+diff --git a/systemd/iprdump.service.in b/systemd/iprdump.service.in
+index f1a72ff..4f085eb 100644
+--- a/systemd/iprdump.service.in
++++ b/systemd/iprdump.service.in
+@@ -7,3 +7,3 @@ Type=forking
+ 
+ [Install]
+-WantedBy=multi-user.target
++WantedBy=iprutils.target
+diff --git a/systemd/iprinit.service.in b/systemd/iprinit.service.in
+index 2ae0ce0..1d699d6 100644
+--- a/systemd/iprinit.service.in
++++ b/systemd/iprinit.service.in
+@@ -6,3 +6,3 @@ Type=forking
+ 
+ [Install]
+-WantedBy=multi-user.target
++WantedBy=iprutils.target
+diff --git a/systemd/iprupdate.service.in b/systemd/iprupdate.service.in
+index f34ed86..732dcf4 100644
+--- a/systemd/iprupdate.service.in
++++ b/systemd/iprupdate.service.in
+@@ -6,3 +6,3 @@ Type=forking
+ 
+ [Install]
+-WantedBy=multi-user.target
++WantedBy=iprutils.target
+diff --git a/systemd/iprutils.target b/systemd/iprutils.target
+new file mode 100644
+index 0000000..1b1260e
+--- /dev/null
++++ b/systemd/iprutils.target
+@@ -0,0 +1,7 @@
++[Unit]
++Description=IBM Power Raid utilities
++Requires=iprupdate.service iprinit.service iprdump.service basic.target
++Before=default.target
++
++[Install]
++WantedBy=default.target
+diff --git a/udev/rules.d/90-iprutils.rules b/udev/rules.d/90-iprutils.rules
+new file mode 100644
+index 0000000..ea39fa3
+--- /dev/null
++++ b/udev/rules.d/90-iprutils.rules
+@@ -0,0 +1 @@
++DRIVERS=="ipr", TAG+="systemd", ENV{SYSTEMD_WANTS}+="iprutils.target" 
+-- 
+1.9.3
+
