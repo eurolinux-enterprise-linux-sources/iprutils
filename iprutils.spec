@@ -1,17 +1,18 @@
 Summary: Utilities for the IBM Power Linux RAID adapters
 Name:    iprutils
-Version: 2.4.15.1
+Version: 2.4.16.1
 Release: 1%{?dist}
 License: CPL
 Group:   System Environment/Base
 URL:     http://sourceforge.net/projects/iprdd/
 
-Source0: https://sourceforge.net/projects/iprdd/files/iprutils%20for%202.6%20kernels/2.4.15/%{name}-%{version}.tar.gz
+Source0: https://sourceforge.net/projects/iprdd/files/iprutils%20for%202.6%20kernels/2.4.16/%{name}-%{version}.tar.gz
 
 # missing man page
 Source1: iprdbg.8.gz
 
 Patch0: 0001-Service-start-is-controled-by-udev-rule.patch
+Patch1: 0001-iprutils-Further-show-details-speedup.patch
 
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
@@ -35,6 +36,7 @@ supported by the ipr SCSI storage device driver.
 %prep
 %setup -q -n %{name}-%{version}
 %patch0 -p1 -b .udev
+%patch1 -p1 -b .speed
 
 %build
 export CFLAGS="%{optflags} -fPIE -Wl,-z,relro,-z,now"
@@ -95,6 +97,12 @@ mkdir -p $RPM_BUILD_ROOT/%{_unitdir}
 %{_sysconfdir}/bash_completion.d
 
 %changelog
+* Tue Jun 19 2018 Sinny Kumari <skumari@redhat.com> - 2.4.16.1-1
+- Resolves: #1587834 - vpdupdate takes over an hour on system with 104 drive
+- Resolves: #1521052 - iprutils package update for POWER
+- Resolves: #1547891 - iprconfig unable to Download microcode on all applicable devices
+- Resolves: #1576013 - iprconfig tools shows wrong error message, while creating raid using RI SSDs and normal SSDs
+
 * Wed Sep 13 2017 Sinny Kumari <skumari@redhat.com> - 2.4.15.1-1
 - Resolves: #1456500 - iprutils package update to 2.4.15.1
 

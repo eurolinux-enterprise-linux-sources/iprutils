@@ -4102,6 +4102,7 @@ int confirm_raid_start(i_container *i_con)
 	int header_lines;
 	int toggle = 0;
 	struct screen_output *s_out;
+	int is_ri_count = 0, non_ri_count = 0;
 
 	rc = RC_SUCCESS;
 
@@ -4113,10 +4114,22 @@ int confirm_raid_start(i_container *i_con)
 			print_dev(k, cur_raid_cmd->dev, buffer, "1", k);
 
 			for_each_af_dasd(ioa, dev) {
-				if (dev->dev_rcd->issue_cmd)
+				if (dev->dev_rcd->issue_cmd) {
 					print_dev(k, dev, buffer, "1", k);
+					if (dev->block_dev_class & IPR_SSD) {
+						if (dev->read_intensive & IPR_RI)
+							is_ri_count++;
+                   				else
+							non_ri_count++;
+					}
+				}
 			}
 		}
+	}
+
+	if (is_ri_count > 0 && non_ri_count > 0) {
+		rc = RC_95_Mixed_RISSD_SSDs;
+		return rc;
 	}
 
 	toggle_field = 0;
@@ -11842,7 +11855,7 @@ int download_all_ucode(i_container *i_con)
 		if (!ioa->ioa.scsi_dev_data || ioa->ioa_dead)
 			continue;
 
-		for_each_dev (ioa, dev) {
+		for_ioa_and_each_dev (ioa, dev) {
 			if (ipr_is_volume_set(dev))
 				continue;
 
@@ -14115,6 +14128,7 @@ static int raid_create(char **args, int num_args)
 {
 	int i, num_devs = 0, ssd_num_devs = 0, rc, prot_level;
 	int non_4k_count = 0, is_4k_count = 0;
+	int non_ri_count = 0, is_ri_count = 0;
 	int next_raid_level, next_stripe_size, next_qdepth, next_label;
 	char *raid_level = IPR_DEFAULT_RAID_LVL;
 	char label[8];
@@ -14210,10 +14224,21 @@ static int raid_create(char **args, int num_args)
 			is_4k_count++;
 		else
 			non_4k_count++;
+
+		if (dev->block_dev_class & IPR_SSD)
+			if (dev->read_intensive & IPR_RI)
+				is_ri_count++;
+			else
+				non_ri_count++;
 	}
 
 	if (is_4k_count > 0 && non_4k_count > 0) {
 		syslog(LOG_ERR, _("4K disks and 5XX disks can not be mixed in an array.\n"));
+		return -EINVAL;
+	}
+
+	if (is_ri_count > 0 && non_ri_count > 0) {
+		syslog(LOG_ERR, _("SSD disks and RI SSD disks can not be mixed in an array.\n"));
 		return -EINVAL;
 	}
 
@@ -15754,7 +15779,7 @@ static int update_all_ucodes(char **args, int num_args)
 	for_each_ioa(ioa) {
 		if (!ioa->ioa.scsi_dev_data)
 			continue;
-		for_each_dev(ioa, dev) {
+		for_ioa_and_each_dev(ioa, dev) {
 			if (ipr_is_volume_set(dev))
 				continue;
 
@@ -19408,11 +19433,15 @@ static const struct {
 static int non_intenactive_cmd(char *cmd, char **args, int num_args)
 {
 	int rc, i;
+	int show_details = 0;
 
 	exit_func = cmdline_exit_func;
 	closelog();
 	openlog("iprconfig", LOG_PERROR | LOG_PID | LOG_CONS, LOG_USER);
-	check_current_config(false);
+	if (!strcmp("show-details", cmd))
+		show_details = 1;
+
+	__check_current_config(false, show_details);
 
 	for (i = 0; i < ARRAY_SIZE(command); i++) {
 		if (strcmp(cmd, command[i].cmd) != 0)

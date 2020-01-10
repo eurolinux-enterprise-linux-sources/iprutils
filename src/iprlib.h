@@ -1594,6 +1594,10 @@ struct ipr_ioa {
 
 #define for_each_dev(i, d) for (d = (i)->dev; (d - (i)->dev) < (i)->num_devices; d++)
 
+#define for_ioa_and_each_dev(i, d) for (d = &((i)->ioa); \
+                                       (d == &((i)->ioa)) || ((d - (i)->dev) < (i)->num_devices); \
+                                       d = (d == &((i)->ioa)) ? (i)->dev : d + 1)
+
 #define for_each_hotplug_dev(i, d) \
       for_each_dev(i, d) \
            if (ipr_is_af_dasd_device(d) || ipr_is_gscsi(d))
@@ -2811,6 +2815,7 @@ int ipr_change_multi_adapter_assignment(struct ipr_ioa *, int, int);
 int set_ha_mode(struct ipr_ioa *, int);
 int set_preferred_primary(struct ipr_ioa *, int);
 void check_current_config(bool);
+void __check_current_config(bool, bool);
 int num_device_opens(int, int, int, int);
 int open_and_lock(char *);
 int tool_init(int);
